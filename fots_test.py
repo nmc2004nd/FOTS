@@ -3,10 +3,10 @@ import time
 import numpy as np
 import open3d as o3d
 
-from tactile_render import get_simapproach
-from utils.marker_motion import MarkerMotion
-from utils import rotations
-import params as pr
+from FOTS.tactile_render import get_simapproach
+from FOTS.utils.marker_motion import MarkerMotion
+from FOTS.utils import rotations
+import FOTS.params as pr
 
 mm_to_pixel = pr.mm_to_pixel
 psp_w, psp_h = pr.sensor_w, pr.sensor_h

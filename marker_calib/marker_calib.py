@@ -1,6 +1,5 @@
 import argparse
 import csv
-import glob
 import math
 import os
 
@@ -10,14 +9,51 @@ import pandas as pd
 import lmfit
 import matplotlib.pyplot as plt
 
+
+def render_points(image, points, window_name):
+    canvas = image.copy()
+    for py, px in points:
+        cv2.circle(canvas, (px, py), 4, (0, 0, 255), -1)
+    cv2.imshow(window_name, canvas)
+
 def click_and_store(event, x, y, flags, param):
-    global points
+    points = param["points"]
+    image = param["image"]
+    window_name = param["window_name"]
+
     if event == cv2.EVENT_LBUTTONDOWN:
         points.append([y, x])
-        cv2.circle(image, (x, y), 3, (0, 0, 255), -1)
-        cv2.imshow("image", image)
+        render_points(image, points, window_name)
     if event == cv2.EVENT_RBUTTONDOWN:
-        points.append([0, 0])
+        if len(points) > 0:
+            points.pop()
+            render_points(image, points, window_name)
+
+
+def collect_points_for_image(image, window_name="image", mode_name=""):
+    points = []
+    preview = image.copy()
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    render_points(preview, points, window_name)
+    cv2.setMouseCallback(
+        window_name,
+        click_and_store,
+        {
+            "points": points,
+            "image": preview,
+            "window_name": window_name,
+        },
+    )
+
+    print(f"[mode] {mode_name}")
+    print("[controls] Left click: add point | Right click: undo last point | Enter/n/Space: next image | q/Esc: quit")
+
+    while True:
+        key = cv2.waitKey(20) & 0xFF
+        if key in (13, 10, ord('n'), ord(' ')):
+            return True, points
+        if key in (27, ord('q')):
+            return False, points
 
 def split_array(a):
   result = []
@@ -110,24 +146,56 @@ if __name__ == "__main__":
     args = argparser.parse_args()
 
     base_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    img_folder = os.path.join(base_path, args.folder)
-    img_files = sorted(glob.glob(f"{img_folder}/*.png"))
-    ball_r = 3 / (0.0266*2)
-    points = []
+    data_folder = os.path.join(base_path, args.folder)
+    if not os.path.isdir(data_folder):
+        raise FileNotFoundError(f"Data folder does not exist: {data_folder}")
 
-    img_path = "/home/r404/Digit_Test/marker_calib/data/"+str(calib_type)+".png"
-    csv_path = "/home/r404/Digit_Test/marker_calib/data/"+str(calib_type)+".csv"
+    ball_r = 3 / (0.0266*2)
+    points_by_image = []
+
     M = []
     d_dx, d_dy = [], []
     s_dx, s_dy = [], []
     t_dx, t_dy = [], []
-    while img_path in img_files:
+    while True:
+        img_path = os.path.join(data_folder, f"{calib_type}.png")
+        csv_path = os.path.join(data_folder, f"{calib_type}.csv")
+
+        if not os.path.exists(csv_path):
+            break
+        if not os.path.exists(img_path):
+            raise FileNotFoundError(f"Missing image for calibration index {calib_type}: {img_path}")
+
         image = cv2.imread(img_path)
-        cv2.imshow("image", image)
-        cv2.setMouseCallback("image", click_and_store, image)
-        cv2.waitKey(0)
-        print(points)
-        with open(csv_path,'r') as f:
+        if image is None:
+            raise ValueError(f"Could not read image: {img_path}")
+
+        mode = calib_type % 3
+        if mode == 0:
+            mode_name = "dilate image: click O (center), E (edge), then contact points C1..Cn"
+        elif mode == 1:
+            mode_name = "shear image: click O_1 only (shifted center)"
+        else:
+            mode_name = "twist image: click E_1 only (rotated edge point)"
+
+        should_continue, image_points = collect_points_for_image(
+            image,
+            window_name="image",
+            mode_name=mode_name,
+        )
+        if not should_continue:
+            print("Calibration point collection stopped by user.")
+            break
+
+        if mode == 0 and len(image_points) < 2:
+            raise ValueError("Dilation image requires at least 2 points: O and E.")
+        if mode in (1, 2) and len(image_points) != 1:
+            raise ValueError("Shear/Twist images require exactly 1 point each (O_1 or E_1).")
+
+        points_by_image.append(image_points)
+
+        print(f"points selected in image {calib_type}: {len(image_points)}")
+        with open(csv_path, 'r') as f:
             reader = csv.reader(f)
             next(reader)
             for row in reader:
@@ -143,18 +211,42 @@ if __name__ == "__main__":
                     t_dx.append(float(row[2]))
                     t_dy.append(float(row[3]))
         calib_type += 1
-        img_path = "/home/r404/Digit_Test/marker_calib/data/"+str(calib_type)+".png"
-        csv_path = "/home/r404/Digit_Test/marker_calib/data/"+str(calib_type)+".csv"
 
     cv2.destroyAllWindows()
+
+    if calib_type == 0:
+        raise RuntimeError(f"No calibration data found in folder: {data_folder}")
+
+    M = np.asarray(M, dtype=float)
+    if M.size == 0:
+        raise RuntimeError("No marker coordinates were loaded from CSV files.")
+    M = M.reshape(-1, 2)
+
+    num_triplets = len(d_dx) // len(M)
+    if len(d_dx) % len(M) != 0:
+        raise RuntimeError("Invalid d_dx size: cannot infer number of calibration triplets.")
+    if len(points_by_image) < num_triplets * 3:
+        raise RuntimeError(
+            f"Not enough point annotations. Need {num_triplets * 3} images (3 per triplet), got {len(points_by_image)}."
+        )
 
     # obtian marker's real displacement under different loads
     d_d = np.array(np.hstack((d_dx,d_dy)))
     d_s = np.array(np.hstack((s_dx,s_dy))) - d_d
     d_t = np.array(np.hstack((t_dx,t_dy))) - d_d
 
-    points = np.array(points)
-    all_points = split_array(points)
+    all_points = []
+    for i in range(num_triplets):
+        p_d = points_by_image[i * 3]
+        p_s = points_by_image[i * 3 + 1]
+        p_t = points_by_image[i * 3 + 2]
+
+        # Group format expected by downstream code: [O, E, C..., O_1, E_1]
+        grouped_points = [p_d[0], p_d[1], *p_d[2:], p_s[0], p_t[0]]
+        all_points.append(np.array(grouped_points, dtype=float))
+
+    if len(all_points) == 0:
+        raise RuntimeError("No valid contact points were selected from image triplets.")
 
     Cd, Cd_p = [], []
     Cs, Cs_p = [], []
@@ -162,39 +254,50 @@ if __name__ == "__main__":
 
     count = 0
     for p in all_points:
+        if len(p) < 4:
+            raise ValueError("Each point group must contain at least 4 points: O, E, O_1, E_1.")
+
         # the center pos of contact circle
         print(p)
-        O = np.array(p[0])
-        O_1 = np.array(p[-2])
+        O = np.array(p[0], dtype=float)
+        O_1 = np.array(p[-2], dtype=float)
         # calculate shear displacement
         s = O_1 - O
         # the contact edge point
-        E = np.array(p[1])
-        E_1 = np.array(p[-1])
+        E = np.array(p[1], dtype=float)
+        E_1 = np.array(p[-1], dtype=float)
         # calculate twist degree
         a2 = (E-O)[0]**2+(E-O)[1]**2
         b2 = (E_1-O)[0]**2+(E_1-O)[1]**2
-        c2 = (E-E_1)[0]**2+(E-E-1)[1]**2
-        theta = math.acos((a2+b2-c2)/(2*math.sqrt(a2)*math.sqrt(b2)))
+        c2 = (E-E_1)[0]**2+(E-E_1)[1]**2
+        denom = 2 * math.sqrt(a2) * math.sqrt(b2)
+        if denom == 0:
+            raise ValueError("Invalid geometry for theta computation: contact edge points overlap center.")
+        cos_theta = max(-1.0, min(1.0, (a2 + b2 - c2) / denom))
+        theta = math.acos(cos_theta)
         # contact points
-        C = np.array(p[2:-2])
+        C = np.array(p[2:-2], dtype=float)
         # calculate height of contact points
         h = []
         for c in C:
             h_square = (E-O)[0]**2+(E-O)[1]**2-((c-O)[0]**2+(c-O)[1]**2)
-            h.append([int(math.sqrt(h_square))])
+            h.append([math.sqrt(max(h_square, 0.0))])
+
+        if len(h) > len(M):
+            raise ValueError("Number of selected contact points exceeds number of markers.")
+
         # concatenate contact points and corresponding height
-        Cd = np.concatenate((C,h),axis=1)
+        Cd = np.concatenate((C, np.array(h, dtype=float)),axis=1)
         Cd_zero = np.zeros((len(M)-len(h), 3))
         Cd = np.concatenate((Cd,Cd_zero),axis=0)
 
         # shear
-        Cs = [O,s]
+        Cs = np.array([O, s], dtype=float)
         Cs_zero = np.zeros((len(M)-len(Cs), 2))
         Cs = np.concatenate((Cs,Cs_zero),axis=0)
 
         # twist
-        Ct = [O,[theta, 0]]
+        Ct = np.array([O, [theta, 0.0]], dtype=float)
         Ct_zero = np.zeros((len(M)-len(Ct), 2))
         Ct = np.concatenate((Ct,Ct_zero),axis=0)
 
@@ -204,10 +307,13 @@ if __name__ == "__main__":
             Ct_p = Ct.copy()
         else: 
             Cd_p = np.hstack((Cd_p, Cd))
-            Cs_p = np.hstack((Cs_p, Cd))
-            Ct_p = np.hstack((Ct_p, Cd))
+            Cs_p = np.hstack((Cs_p, Cs))
+            Ct_p = np.hstack((Ct_p, Ct))
         
         count += 1
+
+    if count == 0:
+        raise RuntimeError("No valid point groups were parsed from clicked points.")
 
     # fit data using lmfit to obtian optimal lambda
     f_d = np.concatenate((M, Cd_p),axis=1)

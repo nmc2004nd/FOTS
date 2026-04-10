@@ -1,7 +1,7 @@
 import cv2
 import math
 import numpy as np
-import params as pr
+import FOTS.params as pr
 
 mm2pix = pr.mm_to_pixel
 

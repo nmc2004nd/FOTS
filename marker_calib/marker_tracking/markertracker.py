@@ -5,9 +5,9 @@ import cv2
 from skimage.morphology import disk, closing
 from skimage import measure
 from scipy.ndimage import convolve
-from normxcorr2 import normxcorr2
+from FOTS.marker_calib.marker_tracking.normxcorr2 import normxcorr2
 from enum import Enum
-from fit_grid import fit_grid
+from FOTS.marker_calib.marker_tracking.fit_grid import fit_grid
 
 class GridStyle(Enum):
     NOBORDER = 0

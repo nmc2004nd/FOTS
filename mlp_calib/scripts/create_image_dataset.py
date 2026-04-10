@@ -12,11 +12,11 @@ import numpy as np
 import torch
 import sys
 sys.path.append('/home/r404/mujoco_pybinding/FOTS/mlp_calib/src')
-from src.dataio.create_csv import (combine_csv, create_pixel_csv,
+from FOTS.mlp_calib.src.dataio.create_csv import (combine_csv, create_pixel_csv,
                                    create_train_test_csv)
-from src.dataio.data_loader import data_loader
-from src.dataio.generate_sphere_gt_normals import generate_sphere_gt_normals
-from src.third_party import data_utils
+from FOTS.mlp_calib.src.dataio.data_loader import data_loader
+from FOTS.mlp_calib.src.dataio.generate_sphere_gt_normals import generate_sphere_gt_normals
+from FOTS.mlp_calib.src.third_party import data_utils
 
 base_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 

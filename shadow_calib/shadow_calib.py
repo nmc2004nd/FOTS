@@ -18,7 +18,7 @@ import os
 import cv2
 import numpy as np
 
-import params as pr
+import FOTS.params as pr
 
 base_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 

@@ -10,7 +10,7 @@ import os.path
 import cv2
 import numpy as np
 
-from src.digit.digit_sensor import DigitSensor
+from FOTS.mlp_calib.src.digit.digit_sensor import DigitSensor
 
 base_path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 

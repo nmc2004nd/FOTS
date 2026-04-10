@@ -6,10 +6,10 @@ from scipy.ndimage import gaussian_filter
 from scipy.ndimage import correlate
 import scipy.ndimage as ndimage
 
-import params as pr
-from shadow_calib.planar_shadow import planar_shadow
-from utils.prepost_mlp import preproc_mlp
-from mlp_calib.src.train.mlp_model import MLP
+import FOTS.params as pr
+from FOTS.shadow_calib.planar_shadow import planar_shadow
+from FOTS.utils.prepost_mlp import preproc_mlp
+from FOTS.mlp_calib.src.train.mlp_model import MLP
 
 w,h = pr.sensor_w, pr.sensor_h
 

@@ -6,8 +6,8 @@ seed = 42
 torch.seed = seed
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from utils.fots_render import FOTSRender
-from mlp_calib.src.train.mlp_model import MLP
+from FOTS.utils.fots_render import FOTSRender
+from FOTS.mlp_calib.src.train.mlp_model import MLP
 
 def get_simapproach():
     # load the image taken from a real digit sensor
